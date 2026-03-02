@@ -7,6 +7,14 @@ function u32be(bytes, offset) {
   ) >>> 0;
 }
 
+function i16le(bytes, offset) {
+  let v = bytes[offset] | (bytes[offset + 1] << 8);
+  if (v & 0x8000) {
+    v -= 0x10000;
+  }
+  return v;
+}
+
 function decodeUplink(input) {
   const bytes = input.bytes || [];
   if (bytes.length !== 16) {
@@ -19,21 +27,37 @@ function decodeUplink(input) {
   const msgType = bytes[1];
   const nodeId = bytes[2];
   const flags = bytes[3];
+  const base = {
+    ver: ver,
+    msg_type: msgType,
+    msg_type_name:
+      msgType === 0x01
+        ? "heartbeat"
+        : (msgType === 0x02 ? "occupancy_changed" : (msgType === 0x03 ? "temperature" : "unknown")),
+    node_id: nodeId,
+    flags: flags,
+    low_light: (flags & 0x01) !== 0,
+    counter: u32be(bytes, 8),
+    uptime_s: u32be(bytes, 12),
+  };
+
+  if (msgType === 0x03) {
+    const tempCenti = i16le(bytes, 4);
+    return {
+      data: {
+        ...base,
+        temp_c: tempCenti / 100.0,
+      },
+    };
+  }
 
   return {
     data: {
-      ver: ver,
-      msg_type: msgType,
-      msg_type_name: msgType === 0x01 ? "heartbeat" : (msgType === 0x02 ? "occupancy_changed" : "unknown"),
-      node_id: nodeId,
-      flags: flags,
-      low_light: (flags & 0x01) !== 0,
+      ...base,
       luma: bytes[4],
       occupied: bytes[5],
       stable_count: bytes[6],
       raw_count: bytes[7],
-      counter: u32be(bytes, 8),
-      uptime_s: u32be(bytes, 12),
     },
   };
 }
